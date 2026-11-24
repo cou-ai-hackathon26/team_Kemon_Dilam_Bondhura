@@ -20,4 +20,9 @@ describe('reading a bill photo on the device',()=>{
     expect(draftFromBill('Total 500\nTotal 700','BDT')).toBeNull();
     expect(draftFromBill('Total USD 50','BDT')).toBeNull();
   });
+  it('never takes the due date or an impossible date as the bill date, and fills in the printed due date',()=>{
+    const d=draftFromBill('Bill date 20/11/2026\nDue date 30/11/2026\nTotal 1,200','BDT')!;
+    expect(d.effective_on).toBe('2026-11-20');expect(d.kind==='invoice'&&d.due_on).toBe('2026-11-30');
+    expect(draftFromBill('Date 31/02/2026 Total 1,200','BDT')!.warnings).toContain('No date was found on the bill, so today is used.');
+  });
 });

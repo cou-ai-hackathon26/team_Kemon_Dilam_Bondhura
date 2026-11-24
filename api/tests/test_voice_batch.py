@@ -376,3 +376,24 @@ def test_two_payments_in_one_sentence_need_no_full_stop(note):
     assert [(d['amount_minor'], d['effective_on'], d['entry_type']) for d in drafts] == [
         (50000, '2026-11-24', 'income'),   # "amake ... dise": someone gave money to the owner, today
         (60000, '2026-11-23', 'income')]   # "gotokal ... paisi": received yesterday
+
+
+@pytest.mark.parametrize('note, reason', [
+    ('500 taka dilam na', 'NOT_PAID'),              # "I did not give 500"
+    ('500 টাকা দিলাম না', 'NOT_PAID'),
+    ('rahim 300 taka dibe kal', 'PLANNED'),         # "Rahim will give 300 tomorrow"
+    ('রহিম কাল ৩০০ টাকা দিবে', 'PLANNED'),
+    ('বিকাশে ৫০০ টাকা পাবো', 'PLANNED')])
+def test_not_paid_and_promised_money_never_become_drafts(note, reason):
+    drafts, dropped, _ = vb.split_note(note, TODAY, 'BDT', 2, use_ai=False)
+    assert drafts == [] and [d['reason'] for d in dropped] == [reason]
+
+
+@pytest.mark.parametrize('note, entry_type, amount', [
+    ('Karim 700 taka ferot dise', 'income', 70000),    # someone paid money back to the owner
+    ('করিম ৭০০ টাকা ফেরত দিসে', 'income', 70000),
+    ('ami ferot dilam 200 taka', 'expense', 20000),    # the owner paid money back
+    ('500 na na 600 taka dilam', 'expense', 60000)])   # "na na" is a correction, not "did not"
+def test_refunds_and_corrections_keep_the_right_direction(note, entry_type, amount):
+    drafts, dropped, _ = vb.split_note(note, TODAY, 'BDT', 2, use_ai=False)
+    assert dropped == [] and [(d['entry_type'], d['amount_minor']) for d in drafts] == [(entry_type, amount)]

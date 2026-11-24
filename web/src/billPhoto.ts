@@ -14,8 +14,8 @@ export async function readPhotoText(image:string|File, language:string):Promise<
 
 const MONTHS=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
 const pad=(n:number)=>String(n).padStart(2,'0');
-/** The bill date, if one is printed: 2026-11-24, 24/11/2026, 24 Nov 2026 or Nov 24, 2026. Never a future date. */
-function billDate(text:string):string|null{
+/** The first date printed in the text: 2026-11-24, 24/11/2026, 24 Nov 2026 or Nov 24, 2026. */
+function printedDate(text:string):string|null{
   let y=0,m=0,d=0;
   const iso=text.match(/\b(20\d\d)-(\d{1,2})-(\d{1,2})\b/);
   const dmy=text.match(/\b(\d{1,2})[/.-](\d{1,2})[/.-](20\d\d)\b/);
@@ -26,9 +26,19 @@ function billDate(text:string):string|null{
     const first=/^\d/.test(named[1]);const mon=MONTHS.indexOf((first?named[2]:named[1]).toLowerCase())+1;
     if(mon)[d,m,y]=[+(first?named[1]:named[2]),mon,+named[3]];
   }
-  if(!y||m<1||m>12||d<1||d>31)return null;
-  const value=`${y}-${pad(m)}-${pad(d)}`;
-  return value<=todayIso()?value:null;
+  if(!y||m<1||m>12||d<1||d>new Date(Date.UTC(y,m,0)).getUTCDate())return null;  // 31/02 is not a date
+  return `${y}-${pad(m)}-${pad(d)}`;
+}
+const DUE=/(?:due\s*(?:date|on|by)?|pay\s+by|শেষ\s+তারিখ)\s*[:=-]?\s*([^\n]{0,24})/i;
+/** The bill date: a printed date that is not the due date, never in the future. */
+function billDate(text:string):string|null{
+  const value=printedDate(text.replace(new RegExp(DUE.source,'gi'),' '));
+  return value&&value<=todayIso()?value:null;
+}
+/** The printed due date, if any. */
+function dueDate(text:string):string|null{
+  const found=text.match(DUE);
+  return found?printedDate(found[1]):null;
 }
 
 // Labels that name the amount actually paid or owed. "Subtotal", tax and discount lines are never the total.
@@ -70,7 +80,9 @@ export function draftFromBill(text:string, currency:string):Draft|null {
     return {ok:true, kind:'cash', direction:'outflow', status:'cleared', amount_minor:amount, currency, workspace_currency:currency,
       currency_mismatch:false, effective_on:day, memo:number?`Receipt ${number}`:'', warnings, can_save:true, confidence:null};
   }
+  const printedDue = dueDate(normalized);
+  const due = printedDue && printedDue >= day ? printedDue : '';
   return {ok:true, kind:'invoice', amount_minor:amount, currency, workspace_currency:currency, currency_mismatch:false,
-    effective_on:day, due_on:'', vendor_name:'', invoice_number:number, memo:'', warnings:[...warnings,
-      t('Enter the supplier and the due date before adding.')], can_save:true, confidence:null};
+    effective_on:day, due_on:due, vendor_name:'', invoice_number:number, memo:'', warnings:[...warnings,
+      due?t('Enter the supplier before adding.'):t('Enter the supplier and the due date before adding.')], can_save:true, confidence:null};
 }

@@ -42,3 +42,13 @@ describe('currency-bound amounts in editable voice transcripts',()=>{
     expect(normalizeSpokenAmount('Paid five hundred dollars','USD')).toBe('Paid 500 dollars');
   });
 });
+
+describe('money that did not move',()=>{
+  const opts={currency:'BDT',digits:2,today:new Date('2026-11-24T10:00:00')};
+  it.each(['500 taka dilam na','500 টাকা দিলাম না','I did not pay Rahim 500','রহিম ৫০০ টাকা দেয়নি'])('makes no draft from %s',text=>{
+    expect(parseRecordSentence(text,opts)).toBeNull();
+  });
+  it('still reads a correction ("na na") as the corrected payment',()=>{
+    expect(parseRecordSentence('Rahim ke 500 na na 600 taka dilam',opts)).toMatchObject({direction:'outflow'});
+  });
+});

@@ -223,11 +223,15 @@ docs/               guides, runbooks and the UX audit
 
 ## Quality
 
+Latest results, what each test covers, and the bugs the last audit found: [docs/TEST_RESULTS.md](docs/TEST_RESULTS.md).
+
 - `python -m pytest api/tests -q`: Covers money invariants, roles, the Telegram and SMS flows, the chat
   brain on misspelt, slang and formal messages, and the model chain's number check.
 - `npm run build --prefix web` and `npm test --prefix web`: type-checked build and browser-side finance fixtures.
 - `node scripts/check_rahim_browser.cjs`: a real browser signs up, records cash, plans a collection, issues and
   revokes a passport, and saves only after confirmation.
+- `node scripts/check_voice_batch_browser.cjs`: one voice note becomes several drafts that are edited and saved together.
+- `python -m evals.run --suite smoke`: extraction accuracy and the on-device assistant's held-out scores.
 - CI runs all of these on every pull request, plus dependency audits and a secret scan.
 
 ## Security

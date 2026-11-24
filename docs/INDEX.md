@@ -4,6 +4,8 @@
 | --- | --- |
 | [BUILD.md](BUILD.md) | Building and deploying the website, API and Android app |
 | [DEMO.md](DEMO.md) | A step-by-step demo with the sample business |
+| [COMPETITION.md](COMPETITION.md) | The two hackathon challenges: voice note to drafts, and the honest cash radar |
+| [TEST_RESULTS.md](TEST_RESULTS.md) | Latest test and evaluation results, and the bugs the last audit fixed |
 | [CHANNELS.md](CHANNELS.md) | The chat brain, Telegram, the in-app chat, one-step connect and payment SMS |
 | [TELEGRAM.md](TELEGRAM.md) | Creating and configuring the Telegram bot |
 | [EMAIL-REMINDERS.md](EMAIL-REMINDERS.md) | Email codes and bill reminders through the mail relay |

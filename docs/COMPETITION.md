@@ -90,6 +90,11 @@ For the signed-in workflow:
 5. Explain the alert rule: alert only on the realistic outlook, once per episode; a late payer within their habit is
    not chased.
 
+## Test results
+
+The latest numbers for both challenges, and the bugs the last audit found and fixed, are in
+[TEST_RESULTS.md](TEST_RESULTS.md).
+
 ## What the server needs
 
 - `CAPZORYX_CHAT_GROQ_KEY`: Whisper speech to text and the AI splitter (free at console.groq.com).

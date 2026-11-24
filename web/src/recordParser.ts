@@ -14,6 +14,8 @@ const OUT=/\b(?:paid|pay|spent|spend|bought|buy|purchased|purchase|expense|rent|
 const INVOICE=/\b(?:bill|invoice|payable|owe|owed|due)\b|বাকি|বিল|পাওনা/i;
 const PAID_ALREADY=/\b(?:paid|gave|dilam|diyechi|disi)\b|দিলাম|দিয়েছি|পরিশোধ/i;
 export const looksLikeOpenBill=(text:string)=>INVOICE.test(text)&&!PAID_ALREADY.test(text)&&!isReceipt(text);
+// "500 taka dilam na", "I did not pay": nothing moved. "na na" is a correction ("500 na na 600"), not a negation.
+const NOT_PAID=/\b(?:did\s+not|didn'?t|not\s+paid|never\s+paid|dey\s?nai|dei\s?nai|pai\s?nai|deini|paini|hoini|hoy\s?nai)\b|দেয়নি|দেয়নি|দেইনি|দিইনি|দিনি|পাইনি|পায়নি|পায়নি|হয়নি|হয়নি|\b(?:dilam|disi|dichi|diyechi|dise|dilo|pailam|pelam|paisi|korlam|kinlam)\s+na\b(?!\s+na\b)|(?:দিলাম|দিসি|দিছি|দিয়েছি|দিসে|দিল|পেলাম|পাইলাম|পাইসি|কিনলাম|করলাম)\s+না(?![\p{L}\p{M}])(?!\s+না)/iu;
 const QUESTION=/\?|^(?:how|what|why|when|where|which|who|can|could|should|do|does|is|are|will|would|please explain|show|tell|list|কত|কি|কী|কেন|কিভাবে|কীভাবে)\b/i;
 const MULT:Record<string,number>={k:1e3,thousand:1e3,হাজার:1e3,hajar:1e3,hazar:1e3,lakh:1e5,lac:1e5,লাখ:1e5,lakhs:1e5,crore:1e7,কোটি:1e7,m:1e6,million:1e6};
 const MONTHS=['jan','feb','mar','apr','may','jun','jul','aug','sep','oct','nov','dec'];
@@ -100,6 +102,7 @@ export function parseRecordSentence(raw:string,opts:ParseOptions,tagged?:TaggedF
   const text=expandLocalAmounts(asciiDigits(raw.normalize('NFC'))).replace(/\s+/g,' ').trim();
   if(text.length<4||text.length>400||QUESTION.test(text))return null;
   if(TAKEN.test(text)&&NEGATED_RECEIPT.test(text))return null;
+  if(NOT_PAID.test(text))return null;
   const inflow=isReceipt(text),outflow=OUT.test(text),invoice=INVOICE.test(text);
   if(!tagged&&!inflow&&!outflow&&!invoice)return null;
   const ruleAmount=findAmount(text,opts.digits);

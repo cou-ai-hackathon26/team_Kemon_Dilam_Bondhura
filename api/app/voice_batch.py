@@ -224,18 +224,26 @@ BALANCE = re.compile(r'আমার কাছে.{0,80}টাকা (?:আছে
 NEGATED = re.compile(r'\b(?:dey ?nai|dei ?nai|dey ?ni|deini|dini|dei nii|pai ?nai|pay ?nai|paini|hoy ?nai|hoini|'
                      r'not paid|didn\'?t|did not|never|no payment)\b|দেয়নি|দেয়নি|দেইনি|দিইনি|দিনি|পাইনি|পায়নি|পায়নি|হয়নি|হয়নি', re.I)
 # Plans and questions are not money that moved: "kal dibo", "will pay", "koto dibo?".
-PLANNED = re.compile(r'\b(?:dibo|debo|dite hobe|korbo|kinbo|will pay|will buy|going to|plan|planning|next week|'
-                     r'agami|porer shoptahe)\b|দিব|দেব|দিতে হবে|কিনব|করব|আগামী|পরের সপ্তাহে', re.I)
+PLANNED = re.compile(r'\b(?:dibo|debo|dibe|debe|diben|deben|pabo|pabe|dite hobe|korbo|kinbo|will pay|will buy|going to|plan|planning|next week|'
+                     r'agami|porer shoptahe)\b|দিব|দেব|পাবো|পাব(?:ে|েন)?(?![\u0980-\u09ff])|দিতে হবে|কিনব|করব|আগামী|পরের সপ্তাহে', re.I)
 # "amake Sadia 500 dise", "আমাকে রহিম ৫০০ টাকা দিয়েছে": someone gave money TO the owner, so it came in.
 TO_ME = re.compile(r'\b(?:amake|amare|amay|amaye)\b.{0,60}\b(?:dise|disey|dichhe|dicche|dilo|dilen|diyeche|diyechen|dise)\b|'
-                   r'(?:আমাকে|আমারে|আমায়).{0,60}(?:দিসে|দিছে|দিল|দিলো|দিয়েছে|দিয়েছেন|দিয়েছে|দিলেন)', re.I)
-BN_NEGATED = re.compile(r'(?:দেয়|দেই|দিই|পাই|পায়|হয়)\s+নাই|(?:দিতে|পেতে)\s+পারিনি')
+                   r'(?:আমাকে|আমারে|আমায়).{0,60}(?:দিসে|দিছে|দিল|দিলো|দিয়েছে|দিয়েছেন|দিয়েছে|দিলেন)|'
+                   # "Karim 700 taka ferot dise": someone paid money back to the owner.
+                   r'\bferot\s+(?:dise|dichhe|dicche|dilo|dilen|diyeche|diyechen)\b|'
+                   r'ফেরত\s+(?:দিসে|দিছে|দিল|দিলো|দিয়েছে|দিয়েছেন|দিলেন)', re.I)
+BN_NEGATED = re.compile(r'(?:দেয়|দেই|দিই|পাই|পায়|হয়)\s+নাই|(?:দিতে|পেতে)\s+পারিনি'
+                        r'|(?:দিলাম|দিসি|দিছি|দিয়েছি|দিসে|দিছে|দিল|দিলো|পেলাম|পাইলাম|পাইসি|পাইছি|কিনলাম|করলাম|নিলাম|হইসে|হয়েছে)'
+                        r'\s+না(?![\u0980-\u09ff])(?!\s+না)')
+# "500 taka dilam na" (I did not give it): a verb followed by "na". "na na" is a correction, not a negation.
+VERB_NA = re.compile(r'\b(?:dilam|disi|dichi|diyechi|dise|dilo|dey|dei|pailam|pelam|paisi|paichi|korlam|kinlam|kinsi|'
+                     r'nilam|hoise|hoyeche)\s+na\b(?!\s+na\b)', re.I)
 
 
 def intent(text):
     """'income', 'bill', 'expense', or a reason the part is not a money movement ('negated', 'planned', 'question', 'unclear')."""
     text = _norm(text)
-    if NEGATED.search(text) or BN_NEGATED.search(text):
+    if NEGATED.search(text) or BN_NEGATED.search(text) or VERB_NA.search(text):
         return 'negated'
     if PLANNED.search(text):
         return 'planned'
