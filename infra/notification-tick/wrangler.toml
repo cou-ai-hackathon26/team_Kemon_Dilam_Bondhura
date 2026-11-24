@@ -1,0 +1,10 @@
+name = "capzoryx-notification-tick"
+main = "worker.mjs"
+compatibility_date = "2026-01-01"
+workers_dev = false
+
+[vars]
+API_ORIGIN = "https://capzoryx-staging-api.onrender.com"
+
+[triggers]
+crons = ["0,30 * * * *"]

@@ -1,0 +1,24 @@
+{"id":"en01","lang":"en","text":"i paid rahman 500","direction":"outflow","amount":"500","vendor":"rahman"}
+{"id":"en02","lang":"en","text":"Yesterday Nila paid me 1,850.50 for fabric.","direction":"inflow","amount":"1850.50","vendor":"Nila"}
+{"id":"en03","lang":"en","text":"On 2026-10-11 I received 1,25,500 BDT from River Books.","direction":"inflow","amount":"125500","vendor":"River Books","date":"2026-10-11"}
+{"id":"en04","lang":"en","text":"spent 2.25k taka on tape","direction":"outflow","amount":"2250","vendor":null}
+{"id":"en05","lang":"en","text":"Got paid Tk 350.25 by Oak Shop.","direction":"inflow","amount":"350.25","vendor":"Oak Shop"}
+{"id":"en06","lang":"en","text":"I paid Mina 300 and Bina 450."}
+{"id":"en07","lang":"en","text":"I paid about 700 yesterday."}
+{"id":"en08","lang":"en","text":"I did not receive the BDT 1250 from Raja."}
+{"id":"bn01","lang":"bn","text":"আজ শিউলিকে ৭২৫ টাকা দিলাম","direction":"outflow","amount":"725","vendor":"শিউলি"}
+{"id":"bn02","lang":"bn","text":"তাসনিম থেকে গতকাল ১,৩৫০.২৫ টাকা পেলাম","direction":"inflow","amount":"1350.25","vendor":"তাসনিম"}
+{"id":"bn03","lang":"bn","text":"মৌসুমীকে ২.৫ হাজার দিলাম","direction":"outflow","amount":"2500","vendor":"মৌসুমী"}
+{"id":"bn04","lang":"bn","text":"২০২৬-১০-২১ তারিখে জনতা স্টোর থেকে ৫০০ টাকা পেলাম","direction":"inflow","amount":"500","vendor":"জনতা স্টোর","date":"2026-10-21"}
+{"id":"bn05","lang":"bn","text":"মোড়কের জন্য ৳৮৭৫ খরচ করলাম","direction":"outflow","amount":"875","vendor":null}
+{"id":"bn06","lang":"bn","text":"রিয়াকে ৭৮০ টাকা দিইনি"}
+{"id":"bn07","lang":"bn","text":"কাল সামিরকে ৭৫০ টাকা দেব"}
+{"id":"bn08","lang":"bn","text":"সালমাকে কত দিলাম ৫০০ না ৬০০?"}
+{"id":"bl01","lang":"bn-Latn","text":"Mitu ke 1.5k disi kal","direction":"outflow","amount":"1500","vendor":"Mitu"}
+{"id":"bl02","lang":"bn-Latn","text":"ami 500 tk niyechi rahim theke","direction":"inflow","amount":"500","vendor":"rahim"}
+{"id":"bl03","lang":"bn-Latn","text":"aj Jui ke ২ hajar dilam","direction":"outflow","amount":"2000","vendor":"Jui"}
+{"id":"bl04","lang":"bn-Latn","text":"Sun Trade theke kal 1.25 lakh pailam","direction":"inflow","amount":"125000","vendor":"Sun Trade"}
+{"id":"bl05","lang":"bn-Latn","text":"2026-10-08 e Alfa Store theke 975.25 pelam","direction":"inflow","amount":"975.25","vendor":"Alfa Store","date":"2026-10-08"}
+{"id":"bl06","lang":"bn-Latn","text":"ami 2500 tk dei nai Rupu ke"}
+{"id":"bl07","lang":"bn-Latn","text":"Oishi ke 800 INR disi"}
+{"id":"bl08","lang":"bn-Latn","text":"500 na 600 dilam Muna ke?"}

@@ -1,0 +1,83 @@
+[
+  {
+    "suite": "heldout_eval",
+    "metric": "answer",
+    "passed": 107,
+    "samples": 110,
+    "source": "synthetic",
+    "dataset_sha256": "0558423852d34ca3d48596893f6d6f12cc7db28a9f39f8a468da2e2fd9ceaf42",
+    "model_sha256": null
+  },
+  {
+    "suite": "heldout_eval_v2",
+    "metric": "answer",
+    "passed": 91,
+    "samples": 93,
+    "source": "synthetic",
+    "dataset_sha256": "9b3f22c2d58c066c0b299b8c5094d1de12bae7309b5f142039b82330c15954ba",
+    "model_sha256": null
+  },
+  {
+    "suite": "heldout_eval_v3",
+    "metric": "answer",
+    "passed": 70,
+    "samples": 95,
+    "source": "synthetic",
+    "dataset_sha256": "fda813eadda7f44068885e5a0722f60d371faa54472a78d0b964ac33c99980f4",
+    "model_sha256": null
+  },
+  {
+    "suite": "browser_rules",
+    "metric": "amount_minor",
+    "passed": 18,
+    "samples": 18,
+    "source": "synthetic",
+    "dataset_sha256": "7781c5edd7b5b2ec38ff261b22ce4f98a7c5e26817e7c4385d8c379d2fe775ec",
+    "model_sha256": "2e4a6983ea1a7b5886db7b5628b8972cdce3194a694dee82b59d1e11c6446fd4"
+  },
+  {
+    "suite": "browser_rules",
+    "metric": "direction",
+    "passed": 18,
+    "samples": 18,
+    "source": "synthetic",
+    "dataset_sha256": "7781c5edd7b5b2ec38ff261b22ce4f98a7c5e26817e7c4385d8c379d2fe775ec",
+    "model_sha256": "2e4a6983ea1a7b5886db7b5628b8972cdce3194a694dee82b59d1e11c6446fd4"
+  },
+  {
+    "suite": "browser_rules",
+    "metric": "party",
+    "passed": 8,
+    "samples": 8,
+    "source": "synthetic",
+    "dataset_sha256": "7781c5edd7b5b2ec38ff261b22ce4f98a7c5e26817e7c4385d8c379d2fe775ec",
+    "model_sha256": "2e4a6983ea1a7b5886db7b5628b8972cdce3194a694dee82b59d1e11c6446fd4"
+  },
+  {
+    "suite": "hisab_tagger",
+    "metric": "amount_minor",
+    "passed": 16,
+    "samples": 18,
+    "source": "synthetic",
+    "dataset_sha256": "7781c5edd7b5b2ec38ff261b22ce4f98a7c5e26817e7c4385d8c379d2fe775ec",
+    "model_sha256": "931551c9e1cf8d5827ecf01515c3af9dfe20dc120ddeb01d6bd59a0274645cd9"
+  },
+  {
+    "suite": "hisab_tagger",
+    "metric": "direction",
+    "passed": 16,
+    "samples": 18,
+    "source": "synthetic",
+    "dataset_sha256": "7781c5edd7b5b2ec38ff261b22ce4f98a7c5e26817e7c4385d8c379d2fe775ec",
+    "model_sha256": "931551c9e1cf8d5827ecf01515c3af9dfe20dc120ddeb01d6bd59a0274645cd9"
+  },
+  {
+    "suite": "hisab_tagger",
+    "metric": "party",
+    "passed": 7,
+    "samples": 8,
+    "source": "synthetic",
+    "dataset_sha256": "7781c5edd7b5b2ec38ff261b22ce4f98a7c5e26817e7c4385d8c379d2fe775ec",
+    "model_sha256": "931551c9e1cf8d5827ecf01515c3af9dfe20dc120ddeb01d6bd59a0274645cd9"
+  }
+]

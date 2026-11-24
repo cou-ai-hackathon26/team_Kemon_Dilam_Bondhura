@@ -1,0 +1,24 @@
+Capzoryx optional on-device speech packs, version 1
+
+English uses OpenAI Whisper tiny, exported to ONNX and quantized by the sherpa-onnx project.
+Copyright 2022 OpenAI. MIT license, /speech-licenses/whisper-MIT.txt
+https://github.com/openai/whisper
+https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-whisper-tiny.tar.bz2
+
+Bengali uses Alpha Cephei Vosk Small Streaming Bengali 0.60 (Zipformer2).
+Licensed under Apache License 2.0, /speech-licenses/sherpa-onnx-APACHE.txt
+https://huggingface.co/alphacep/vosk-model-small-streaming-bn
+https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-streaming-zipformer-bn-vosk-2026-02-09.tar.bz2
+
+Both packs use sherpa-onnx 1.12.23 JavaScript and WebAssembly release files.
+Licensed under Apache License 2.0, /speech-licenses/sherpa-onnx-APACHE.txt
+https://github.com/k2-fsa/sherpa-onnx/releases/tag/v1.12.23
+
+The WebAssembly runtime includes Microsoft ONNX Runtime 1.17.1.
+MIT license, /speech-licenses/onnxruntime-MIT.txt
+Bundled third-party notices, /speech-licenses/onnxruntime-ThirdPartyNotices.txt
+https://github.com/microsoft/onnxruntime
+
+The browser downloads the selected language pack from the Capzoryx site.
+Source archive SHA-256 pins are recorded in web/scripts/prepare-speech.py.
+Each pack's manifest.json contains the size and SHA-256 digest for each distributed asset.

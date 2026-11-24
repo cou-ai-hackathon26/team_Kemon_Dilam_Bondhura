@@ -1,0 +1,88 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install pinned dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r api/requirements.lock.txt
+      - name: Backend test suite (synthetic data only)
+        run: python -m pytest api/tests -q
+      - name: Known-pattern secret scan
+        run: python scripts/security_scan.py
+
+  frontend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: Install locked dependencies
+        run: npm ci --prefix web
+      - name: Type-check and production build
+        run: npm run build --prefix web
+      - name: Local assistant, currency parsing and conversion checks
+        run: |
+          node scripts/check_local_assistant.cjs > /dev/null
+          node scripts/check_currency_ui.cjs
+          node scripts/check_currency_view.cjs
+          node scripts/check_record_parser.cjs
+          node scripts/check_hisab_tagger.cjs
+          node scripts/check_site_guide.cjs
+          node scripts/check_i18n.cjs
+          node scripts/extract_ui_strings.cjs --check
+          python -m evals.run --suite smoke
+      - name: Vitest browser-side finance fixtures
+        run: npm test --prefix web
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Browser golden scenario with an isolated local API
+        run: |
+          python -m pip install -r api/requirements.lock.txt
+          web/node_modules/.bin/playwright install --with-deps chromium
+          node scripts/check_rahim_browser.cjs
+          node scripts/check_payroll_browser.cjs
+          node scripts/check_business_browser.cjs
+          node scripts/check_voice_batch_browser.cjs
+          CHROMIUM_PATH="$(command -v google-chrome)" xvfb-run -a node scripts/check_pwa.cjs
+
+  dependency-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Python advisories
+        run: |
+          pip install pip-audit
+          pip-audit -r api/requirements.lock.txt --no-deps --disable-pip
+      - name: npm advisories
+        run: npm audit --prefix web --audit-level=high

@@ -1,0 +1,52 @@
+{
+  "name": "capzoryx",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview --host 127.0.0.1",
+    "postbuild": "node scripts/prepare-pwa.mjs && node scripts/android-links.mjs && node scripts/website-build.mjs",
+    "predev": "node scripts/prepare-ocr.mjs",
+    "prebuild": "node scripts/prepare-ocr.mjs",
+    "prebuild:native": "node scripts/prepare-ocr.mjs",
+    "build:native": "tsc --noEmit && vite build --mode native && cap sync android",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@aparajita/capacitor-biometric-auth": "10.0.0",
+    "@aparajita/capacitor-secure-storage": "8.0.1",
+    "@capacitor-firebase/messaging": "8.6.0",
+    "@capacitor/android": "8.6.2",
+    "@capacitor/app": "8.1.2",
+    "@capacitor/camera": "8.2.6",
+    "@capacitor/core": "8.6.2",
+    "@capacitor/local-notifications": "8.3.1",
+    "@capacitor/share": "8.0.3",
+    "@capgo/capacitor-share-target": "8.0.68",
+    "@tesseract.js-data/ben": "1.0.0",
+    "@tesseract.js-data/eng": "1.0.0",
+    "jspdf": "4.2.1",
+    "jspdf-autotable": "5.0.9",
+    "jsqr": "1.4.0",
+    "qrcode": "1.5.4",
+    "react": "19.2.4",
+    "react-dom": "19.2.4",
+    "tesseract.js": "7.0.0"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@capacitor/cli": "8.6.2",
+    "@types/qrcode": "1.5.6",
+    "@types/react": "19.2.14",
+    "@types/react-dom": "19.2.3",
+    "playwright": "1.62.1",
+    "typescript": "5.9.3",
+    "vite": "7.3.7",
+    "vitest": "4.1.12"
+  },
+  "overrides": {
+    "esbuild": "0.28.1"
+  }
+}

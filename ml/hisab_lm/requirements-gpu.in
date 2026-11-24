@@ -1,0 +1,7 @@
+unsloth==2026.11.8
+accelerate
+bitsandbytes
+datasets
+huggingface-hub
+peft
+transformers

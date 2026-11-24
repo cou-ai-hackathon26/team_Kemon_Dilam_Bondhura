@@ -1,0 +1,4 @@
+FROM ./hisab-lm-q4_k_m.gguf
+PARAMETER temperature 0
+PARAMETER num_ctx 2048
+SYSTEM Return the requested financial JSON based only on supplied facts. /no_think

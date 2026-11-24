@@ -1,0 +1,18 @@
+{"id":"s01","source":"synthetic","language":"en","text":"Paid 62.75 taka to Mango Shop","as_of":"2026-11-21","amount_minor":6275,"direction":"outflow","party":"Mango Shop"}
+{"id":"s02","source":"synthetic","language":"en","text":"Received 1300 from Lotus Stores","as_of":"2026-11-21","amount_minor":130000,"direction":"inflow","party":"Lotus Stores"}
+{"id":"s03","source":"synthetic","language":"en","text":"Bill from Lily Cart 2200 due in 3 days","as_of":"2026-11-21","amount_minor":220000,"direction":"due","party":"Lily Cart"}
+{"id":"s04","source":"synthetic","language":"en","text":"paid 1 lakh 12 hajar to River Traders","as_of":"2026-11-21","amount_minor":11200000,"direction":"outflow","party":"River Traders"}
+{"id":"s05","source":"synthetic","language":"en","text":"I earned 345.60 taka today","as_of":"2026-11-21","amount_minor":34560,"direction":"inflow","party":null}
+{"id":"s06","source":"synthetic","language":"en","text":"spent 25 on labels yesterday","as_of":"2026-11-21","amount_minor":2500,"direction":"outflow","party":null}
+{"id":"s07","source":"synthetic","language":"bn","text":"আজ ৩৭০ টাকা খরচ করলাম","as_of":"2026-11-21","amount_minor":37000,"direction":"outflow","party":null}
+{"id":"s08","source":"synthetic","language":"bn","text":"আজ ২ হাজার টাকা পেলাম","as_of":"2026-11-21","amount_minor":200000,"direction":"inflow","party":null}
+{"id":"s09","source":"synthetic","language":"bn","text":"শাপলাকে ৪০০ টাকা দিলাম","as_of":"2026-11-21","amount_minor":40000,"direction":"outflow","party":"শাপলা"}
+{"id":"s10","source":"synthetic","language":"bn","text":"মেঘা থেকে ৮৫০ টাকা পেলাম","as_of":"2026-11-21","amount_minor":85000,"direction":"inflow","party":"মেঘা"}
+{"id":"s11","source":"synthetic","language":"bn","text":"আমি ৫ লাখ ৩ হাজার টাকা দিলাম","as_of":"2026-11-21","amount_minor":50300000,"direction":"outflow","party":null}
+{"id":"s12","source":"synthetic","language":"bn","text":"কাল ২৫০ টাকা দিলাম","as_of":"2026-11-21","amount_minor":25000,"direction":"outflow","party":null}
+{"id":"s13","source":"synthetic","language":"bn-Latn","text":"aj 720 taka pailam","as_of":"2026-11-21","amount_minor":72000,"direction":"inflow","party":null}
+{"id":"s14","source":"synthetic","language":"bn-Latn","text":"niloy ke 1.5k dilam","as_of":"2026-11-21","amount_minor":150000,"direction":"outflow","party":"niloy"}
+{"id":"s15","source":"synthetic","language":"bn-Latn","text":"kal 2450 taka pelam","as_of":"2026-11-21","amount_minor":245000,"direction":"inflow","party":null}
+{"id":"s16","source":"synthetic","language":"bn-Latn","text":"2 lakh 5 hajar peyechi","as_of":"2026-11-21","amount_minor":20500000,"direction":"inflow","party":null}
+{"id":"s17","source":"synthetic","language":"bn-Latn","text":"ami 9 hajar 250 taka dilam","as_of":"2026-11-21","amount_minor":925000,"direction":"outflow","party":null}
+{"id":"s18","source":"synthetic","language":"bn-Latn","text":"Kalo Shop theke 650 taka nilam","as_of":"2026-11-21","amount_minor":65000,"direction":"inflow","party":"Kalo Shop"}

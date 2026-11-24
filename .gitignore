@@ -1,0 +1,26 @@
+.venv/
+__pycache__/
+.pytest_cache/
+*.pyc
+.env
+.env.*
+!.env.example
+*.sqlite*
+node_modules/
+dist/
+playwright-report/
+test-results/
+*.pem
+*.key
+
+.private/
+.claude/
+
+.vercel/
+evidence/
+web/public/ocr/
+
+# Trained assets are released only after review, outside source control.
+web/public/models/hisab-tagger-*.json
+
+dist-native/

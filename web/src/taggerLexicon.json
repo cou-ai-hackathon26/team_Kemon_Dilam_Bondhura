@@ -1,0 +1,7 @@
+{
+  "multipliers": ["k","hajar","hazar","হাজার","thousand","lakh","lakhs","lac","লাখ","crore","কোটি"],
+  "in": ["পেলাম","পেয়েছি","নিলাম","pailam","pelam","peyechi","nilam","received","collected","earned"],
+  "out": ["দিলাম","দিয়েছি","খরচ","dilam","dilm","diyechi","disi","paid","spent","gave"],
+  "due": ["বাকি","বকেয়া","baki","due","owe","payable"],
+  "dates": ["আজ","কাল","গতকাল","আগামীকাল","পরশু","aj","kal","gotokal","porshu","today","tomorrow","yesterday"]
+}

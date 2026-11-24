@@ -1,0 +1,55 @@
+{
+  "format": 1,
+  "model_sha256": "931551c9e1cf8d5827ecf01515c3af9dfe20dc120ddeb01d6bd59a0274645cd9",
+  "model_bytes": 25462,
+  "training_sha256": "b0698aec00803d39dcb19276df3ab4f159b70939df9ee170c529f1cc89dee9d8",
+  "training_examples": 30000,
+  "source": "synthetic",
+  "cv_examples": 1000,
+  "folds": 5,
+  "cv": [
+    {
+      "c1": 0.05,
+      "c2": 0.1,
+      "correct": 7360,
+      "total": 7361
+    },
+    {
+      "c1": 0.1,
+      "c2": 0.05,
+      "correct": 7361,
+      "total": 7361
+    },
+    {
+      "c1": 0.1,
+      "c2": 0.2,
+      "correct": 7360,
+      "total": 7361
+    }
+  ],
+  "selected": {
+    "c1": 0.1,
+    "c2": 0.05,
+    "correct": 7361,
+    "total": 7361
+  },
+  "iterations": 60,
+  "version": "20261121",
+  "synthetic_development_set": "7781c5edd7b5b2ec38ff261b22ce4f98a7c5e26817e7c4385d8c379d2fe775ec",
+  "development_metrics": {
+    "amount_minor": {
+      "correct": 16,
+      "total": 18
+    },
+    "direction": {
+      "correct": 16,
+      "total": 18
+    },
+    "party": {
+      "correct": 7,
+      "total": 8
+    }
+  },
+  "human_gate": "pending",
+  "midrange_android_gate": "pending"
+}

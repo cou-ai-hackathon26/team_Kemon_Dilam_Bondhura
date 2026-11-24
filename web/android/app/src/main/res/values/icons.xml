@@ -1,0 +1,4 @@
+<resources>
+    <item name="ic_launcher" type="mipmap">@mipmap/capzoryx_mark</item>
+    <item name="ic_launcher_round" type="mipmap">@mipmap/capzoryx_mark</item>
+</resources>

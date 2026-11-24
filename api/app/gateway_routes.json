@@ -1,0 +1,19 @@
+{
+  "providers": {
+    "gemini_free": {"label":"Google Gemini","host":"generativelanguage.googleapis.com","models":"gemini-free-allowlist","adapter":"openai","retains_prompts":true,"may_train_on_data":true,"region":"provider-managed","allowed":["ui_text","question"]},
+    "compatible": {"label":"Configured external provider","host":"configured HTTPS host","models":"configured","adapter":"openai","retains_prompts":true,"may_train_on_data":true,"region":"operator-managed","allowed":["ui_text","question"]},
+    "hisab_lm": {"label":"Hisab-LM","host":"loopback","models":"configured","adapter":"openai","retains_prompts":false,"may_train_on_data":false,"region":"service host","allowed":["question","record_data"]},
+    "translate": {"label":"Google Cloud Translation","host":"translation.googleapis.com","models":"standard translation","adapter":"google_translate","retains_prompts":true,"may_train_on_data":false,"region":"provider-managed","allowed":["ui_text"]}
+  },
+  "tasks": {
+    "translate_ui":{"data_class":"ui_text","ttl":2592000,"timeout":40},
+    "explain":{"data_class":"question","ttl":86400,"timeout":28},
+    "briefing":{"data_class":"record_data","ttl":0,"timeout":20},
+    "message":{"data_class":"record_data","ttl":0,"timeout":20},
+    "extract_text":{"data_class":"record_data","ttl":0,"timeout":22},
+    "scan_image":{"data_class":"record_data","ttl":0,"timeout":24},
+    "voice":{"data_class":"record_data","ttl":0,"timeout":24},
+    "agent_plan":{"data_class":"record_data","ttl":0,"timeout":30},
+    "diagnostic":{"data_class":"ui_text","ttl":0,"timeout":30}
+  }
+}

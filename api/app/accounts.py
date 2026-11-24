@@ -1,0 +1,463 @@
+"""Self-service private financial record workspaces. Passwords are scrypt hashes; sessions are HttpOnly.
+No email delivery or external identity service is required for this zero-budget application.
+"""
+from contextlib import closing
+from datetime import datetime, timezone, timedelta, date
+import hashlib
+import hmac
+import json
+import logging
+import os
+from pathlib import Path
+import re
+import secrets
+import sqlite3
+import threading
+import uuid
+from urllib.parse import urlsplit
+
+from fastapi import APIRouter, Depends, Request, Response
+from pydantic import Field, field_validator, model_validator
+from api.app import app_sessions, security as sec
+from api.app.ratelimit import limiter
+from api.app.contracts import Contract, Currency
+from api.app.currencies import scale
+from api.app.services.finance import fingerprint
+from api.app.routes import db_connection, principal
+
+router = APIRouter(prefix='/api')
+COOKIE = 'safeledger_session'
+TEMPLATE = 'public-demo-v3'
+PUBLIC_TEMPLATES = {'public-demo-v2', TEMPLATE}
+HASH_LOCK = threading.BoundedSemaphore(1)
+ACCOUNT_CAP = 5000
+SIGNUP_HOURLY_CAP = 200
+SIGNUP_HOURLY_CAP_WINDOW = 60
+DUMMY_SALT = '0'*32
+SESSION_TTL = 86400
+REMEMBER_TTL = 30*86400
+SLOW_SECONDS = 20
+
+
+def schema(db):
+    db.executescript('''
+    CREATE TABLE IF NOT EXISTS auth_recovery(account_id TEXT PRIMARY KEY REFERENCES auth_accounts(account_id), code_hash TEXT NOT NULL);
+    CREATE TABLE IF NOT EXISTS auth_accounts(account_id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, created_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS account_members(account_id TEXT NOT NULL REFERENCES auth_accounts(account_id), business_id TEXT NOT NULL, user_id TEXT UNIQUE NOT NULL REFERENCES security_users(user_id), PRIMARY KEY(account_id,business_id));
+    CREATE TABLE IF NOT EXISTS workspace_meta(business_id TEXT PRIMARY KEY, name TEXT NOT NULL, kind TEXT NOT NULL CHECK(kind IN ('personal','demo')));
+    CREATE TABLE IF NOT EXISTS workspace_input_requests(business_id TEXT NOT NULL, request_id TEXT NOT NULL, body_sha256 TEXT NOT NULL, PRIMARY KEY(business_id,request_id));
+    CREATE TABLE IF NOT EXISTS workspace_invites(code_hash TEXT PRIMARY KEY, business_id TEXT NOT NULL, role TEXT NOT NULL CHECK(role IN ('approver','viewer')), created_by TEXT NOT NULL, expires_at INTEGER NOT NULL, used_by TEXT);
+    CREATE TABLE IF NOT EXISTS bookkeeper_invites(
+      code_hash TEXT PRIMARY KEY REFERENCES workspace_invites(code_hash) ON DELETE CASCADE);
+    CREATE VIEW IF NOT EXISTS effective_workspace_invites AS
+      SELECT i.code_hash,i.business_id,
+        CASE WHEN i.role='viewer' AND b.code_hash IS NOT NULL THEN 'bookkeeper' ELSE i.role END AS role,
+        i.created_by,i.expires_at,i.used_by
+      FROM workspace_invites i LEFT JOIN bookkeeper_invites b ON b.code_hash=i.code_hash;
+    ''')
+    if 'archived_at' not in {r[1] for r in db.execute('PRAGMA table_info(workspace_meta)').fetchall()}:
+        db.execute('ALTER TABLE workspace_meta ADD COLUMN archived_at INTEGER')
+    if 'created_at' not in {r[1] for r in db.execute('PRAGMA table_info(workspace_invites)').fetchall()}:
+        db.execute('ALTER TABLE workspace_invites ADD COLUMN created_at INTEGER')
+    canonicalize_usernames(db)
+
+
+def canonicalize_usernames(db):
+    """Usernames are stored in canonical lowercase form. Rewrite any older mixed-case rows, skipping (and reporting)
+    a row whose lowercase form is already taken, then make the database itself refuse case-variant duplicates."""
+    skipped=[]
+    for account,name in db.execute("SELECT account_id,username FROM auth_accounts WHERE username<>lower(trim(username)) ORDER BY created_at").fetchall():
+        canonical=name.strip().lower()
+        if db.execute('SELECT 1 FROM auth_accounts WHERE username=? AND account_id<>?',(canonical,account)).fetchone():skipped.append(account);continue
+        db.execute('UPDATE auth_accounts SET username=? WHERE account_id=?',(canonical,account))
+    if skipped:logging.getLogger('safeledger').warning('Username collision: %d account(s) keep a mixed-case name and can sign in only with that exact spelling',len(skipped))
+    try:db.execute('CREATE UNIQUE INDEX IF NOT EXISTS auth_accounts_username_nocase ON auth_accounts(username COLLATE NOCASE)')
+    except sqlite3.Error:pass
+    db.commit()
+
+
+def archive_legacy_examples(db):
+    """Retain historical evidence, but withdraw all old example/legacy access once."""
+    db.execute('CREATE TABLE IF NOT EXISTS product_migrations(name TEXT PRIMARY KEY)')
+    db.commit()
+    with sec.transaction(db):
+        if db.execute("SELECT 1 FROM product_migrations WHERE name='real-records-v1'").fetchone():return
+        db.execute("UPDATE security_users SET active=0 WHERE business_id IN (SELECT business_id FROM workspace_meta WHERE kind='demo') OR business_id IN ('public-demo-v2','public-demo-v3') OR user_id NOT IN (SELECT user_id FROM account_members)")
+        db.execute("INSERT INTO product_migrations VALUES ('real-records-v1')")
+
+
+def browser_origin(request):
+    if app_sessions.native(request):return
+    origin = request.headers.get('origin','')
+    allowed = {o.strip().rstrip('/') for o in os.environ.get('SAFELEDGER_CORS_ORIGINS','').split(',') if o.strip()}
+    app_host = os.environ.get('CAPZORYX_APP_WEB_ORIGIN','').strip().rstrip('/')
+    if app_host:allowed.add(app_host)
+    fallback_host = os.environ.get('CAPZORYX_FALLBACK_WEB_ORIGIN','').strip().rstrip('/')
+    if fallback_host:allowed.add(fallback_host)
+    if not os.environ.get('RENDER') and not os.environ.get('VERCEL'):
+        allowed.update({'http://127.0.0.1:5173','http://localhost:5173','http://127.0.0.1:4173','http://127.0.0.1:8000','http://localhost:8000','http://testserver'})
+    if origin not in allowed or request.headers.get('X-SafeLedger-Client') != 'web':
+        sec.fail(403,'UNTRUSTED_BROWSER_ORIGIN')
+
+
+def rate(request, db, kind, claimed_limit, edge_limit, global_limit):
+    """Per-minute floods: best-effort end user, infrastructure-observed edge address, and a global ceiling."""
+    claimed, edge = sec.client_keys(request)
+    sec.budgets(db,[('account:'+kind+':'+claimed,claimed_limit),('account:'+kind+'-edge:'+edge,edge_limit),('account:'+kind+'-all',global_limit)])
+    return edge
+
+
+def failure_scopes(kind, name, edge, per_pair, per_name, per_edge):
+    digest = hashlib.sha256(name.encode()).hexdigest()[:32]
+    return [(kind+'-name-edge:'+digest+':'+edge,per_pair),(kind+'-name:'+digest,per_name),(kind+'-edge:'+edge,per_edge)]
+
+
+def locked_out(db, scopes):
+    """Failed-attempt lockout over a rolling 15-minute window, in memory. Runs before any password hashing."""
+    for scope, limit in scopes:
+        if limiter.failure_total(scope) >= limit:sec.fail(429,'TOO_MANY_FAILED_ATTEMPTS',limiter.retry_after(scope,limit) or 60)
+
+
+def record_failure(db, scopes):
+    limiter.add_failure([scope for scope, _ in scopes])
+
+
+EMAIL = re.compile(r'^[A-Za-z0-9._%+\-]{1,64}@[A-Za-z0-9.\-]{1,190}\.[A-Za-z]{2,24}$')
+
+
+def normalize_email(value):
+    email = (value or '').strip().lower()
+    if len(email) > 254 or not EMAIL.fullmatch(email):raise ValueError('Enter a valid email address')
+    return email
+
+
+COMMON_PASSWORDS = {
+    'password','password1','password12','password123','password1234','passw0rd','p@ssw0rd','p@ssword','12345678','123456789','1234567890','12341234','123123123','87654321','987654321','11111111','00000000','12121212',
+    'qwertyui','qwerty123','qwertyuiop','qwerty12','1q2w3e4r','1qaz2wsx','1q2w3e4r5t','abc12345','abcd1234','abcdefgh','abcdefg1','iloveyou','iloveyou1','letmein1','letmein123','welcome1','welcome123','admin123','administrator','changeme','changeme123',
+    'football','baseball','monkey123','dragon123','superman','trustno1','sunshine','princess','starwars','whatever','master123','bangladesh','bangladesh1','dhaka1234','safeledger','safeledger1','safeledger123','capzoryx','business1','company123','test1234','testtest','testing123','default123','secret123','access123','login123','hello123','hellohello','zaq12wsx','asdfghjk','asdf1234','zxcvbnm1','passpass',
+}
+
+
+def reject_weak_password(password, username=''):
+    folded = password.strip().lower()
+    if folded in COMMON_PASSWORDS or folded == username.lower() or len(set(folded)) < 4:
+        raise ValueError('Choose a less common password that is not your username')
+    return password
+
+
+def password_hash(password, salt=None):
+    salt = salt or secrets.token_hex(16)
+    if not HASH_LOCK.acquire(timeout=8):sec.fail(429,'PLEASE_TRY_AGAIN')
+    try:
+        digest=hashlib.scrypt(password.encode(),salt=bytes.fromhex(salt),n=32768,r=8,p=3,maxmem=64*1024*1024,dklen=32).hex()
+    finally:HASH_LOCK.release()
+    return 'scrypt-v1$'+salt+'$'+digest
+
+
+def issue(db, user_id, ttl=SESSION_TTL):
+    token=secrets.token_urlsafe(32)
+    db.execute('INSERT INTO security_sessions VALUES (?,?,?)',(hashlib.sha256(token.encode()).hexdigest(),user_id,sec.now()+ttl))
+    return token
+
+
+def set_cookie(response, token, ttl=SESSION_TTL):
+    secure = bool(os.environ.get('RENDER') or os.environ.get('VERCEL') or os.environ.get('SAFELEDGER_COOKIE_SECURE')=='1')
+    response.set_cookie(COOKIE,token,max_age=ttl,httponly=True,secure=secure,samesite='lax',path='/')
+
+
+def client_ttl(request, default=SESSION_TTL):
+    return app_sessions.ACCESS_TTL if app_sessions.native(request) else default
+
+
+def current_ttl(db, request):
+    """Lifetime left on the presented session, so switching workspace keeps a 'keep me signed in' session long."""
+    if app_sessions.native(request):return client_ttl(request)
+    token=request.cookies.get(COOKIE)
+    row=db.execute('SELECT expires_at FROM security_sessions WHERE token_hash=?',(hashlib.sha256(token.encode()).hexdigest(),)).fetchone() if token else None
+    return min(REMEMBER_TTL,max(SESSION_TTL,row[0]-sec.now())) if row else SESSION_TTL
+
+
+def session_result(db, request, token):
+    return dict(identity(db,sec.authenticate(db,token)), **getattr(request.state,'app_tokens',{}))
+
+
+def identity(db, actor):
+    row=db.execute("SELECT w.name,w.kind,a.username,pr.display_name FROM (SELECT ? AS business_id,? AS user_id) p LEFT JOIN workspace_meta w ON w.business_id=p.business_id LEFT JOIN account_members m ON m.user_id=p.user_id LEFT JOIN auth_accounts a ON a.account_id=m.account_id LEFT JOIN account_profiles pr ON pr.account_id=a.account_id",(actor.business_id,actor.user_id)).fetchone()
+    return dict(workspace_name=row[0] if row[0] else ('Example workspace' if actor.business_id in PUBLIC_TEMPLATES else 'Existing workspace'), workspace_kind=row[1] or 'demo',user_id=actor.user_id,business_id=actor.business_id,role=actor.role,username=row[2],display_name=row[3] or '',guest=actor.business_id in PUBLIC_TEMPLATES,simulation_only=True)
+
+
+class Credentials(Contract):
+    model_config = {"extra":"forbid", "str_strip_whitespace":False}
+    username: str = Field(min_length=3,max_length=32)
+    password: str = Field(min_length=8,max_length=128,strict=True)
+    @field_validator('password',mode='before')
+    @classmethod
+    def preserve_password(cls,value):
+        # Credentials are exact strings: never silently trim user passwords.
+        if not isinstance(value,str):raise ValueError('Expected password text')
+        return value
+
+    @field_validator('username')
+    @classmethod
+    def normalize(cls,value):
+        value=value.lower().strip()
+        if not re.fullmatch(r'[a-z0-9_]{3,32}',value):raise ValueError('Use 3–32 letters, numbers or underscores')
+        return value
+
+
+class LoginCredentials(Contract):
+    """Sign-in is lenient about the username so that a typo is an ordinary wrong-credentials answer, never a format error."""
+    model_config = {"extra":"forbid", "str_strip_whitespace":False}
+    username: str = Field(min_length=1,max_length=64)
+    password: str = Field(min_length=1,max_length=128,strict=True)
+    remember: bool = False
+
+    @field_validator('username')
+    @classmethod
+    def canonical(cls,value):
+        return value.strip().lower()
+
+
+class SignupCredentials(Credentials):
+    currency: Currency = 'BDT'
+    email: str | None = Field(default=None, max_length=254)
+
+    @field_validator('email')
+    @classmethod
+    def clean_email(cls,value):
+        if value is None or not value.strip():return None
+        return normalize_email(value)
+
+    @model_validator(mode='after')
+    def not_weak(self):
+        reject_weak_password(self.password,self.username)
+        return self
+
+
+@router.post('/auth/signup',status_code=201)
+def signup(body:SignupCredentials, request:Request, response:Response, db=Depends(db_connection)):
+    browser_origin(request);rate(request,db,'signup',4,20,30)
+    # Address-independent ceiling: bounds how fast a forged-header caller can fill the account cap.
+    if limiter.failure_total('signup-created',SIGNUP_HOURLY_CAP_WINDOW)>=SIGNUP_HOURLY_CAP:sec.fail(429,'REQUEST_BUDGET_EXCEEDED')
+    hashed=password_hash(body.password)
+    account=uuid.uuid4().hex;business='workspace-'+uuid.uuid4().hex;user='user-'+uuid.uuid4().hex;code=secrets.token_urlsafe(24)
+    try:
+        with sec.transaction(db):
+            if db.execute('SELECT count(*) FROM auth_accounts').fetchone()[0]>=ACCOUNT_CAP:sec.fail(503,'ACCOUNT_CAPACITY_REACHED')
+            db.execute('INSERT INTO auth_accounts VALUES (?,?,?,?)',(account,body.username,hashed,sec.now()))
+            db.execute("INSERT INTO security_users VALUES (?,?, 'owner',1)",(user,business))
+            db.execute('INSERT INTO account_members VALUES (?,?,?)',(account,business,user))
+            create_workspace_data(db,business,'personal','My workspace',body.currency)
+            db.execute('INSERT INTO auth_recovery VALUES (?,?)',(account,hashlib.sha256(code.encode()).hexdigest()))
+            token=app_sessions.issue_client(db,request,response,user,SESSION_TTL)
+            from api.app.notifications.device import observe
+            observe(db,user,account,request,response)
+            sec.audit(db,sec.authenticate(db,token),'account-'+account,'WORKSPACE_CREATED',{'sample_data':False})
+            if body.email:db.execute('INSERT INTO account_emails VALUES (?,?,0)',(account,body.email))
+    except sqlite3.IntegrityError:sec.fail(409,'USERNAME_UNAVAILABLE')
+    limiter.add_failure(['signup-created'])
+    verification_sent=False
+    if body.email:
+        from api.app import mailer,profile
+        if mailer.configured() and mailer.reserve(body.email):verification_sent=mailer.send(body.email,*mailer.code_message('verify',profile.issue_code(db,'verify',account+':'+body.email)))
+    return dict(session_result(db,request,token),recovery_code=code,email_verification_sent=verification_sent)
+
+
+@router.post('/auth/login')
+def login(body:LoginCredentials,request:Request,response:Response,db=Depends(db_connection)):
+    browser_origin(request);edge=rate(request,db,'login',12,120,300)
+    scopes=failure_scopes('login',body.username,edge,8,40,40)
+    pair,(name_scope,name_limit),per_edge=scopes
+    locked_out(db,[pair,per_edge])
+    # Many failures against one name (possibly an attacker, not the owner): slow it to one attempt per few seconds
+    # instead of shutting the real owner out for the whole window. Guessing speed stays capped either way.
+    if limiter.failure_total(name_scope)>=name_limit:
+        wait=limiter.space('login-slow:'+name_scope,SLOW_SECONDS)
+        if wait:sec.fail(429,'TOO_MANY_FAILED_ATTEMPTS',wait)
+    row=db.execute('SELECT account_id,password_hash FROM auth_accounts WHERE username=? COLLATE NOCASE',(body.username,)).fetchone()
+    stored=row[1] if row else 'scrypt-v1$'+DUMMY_SALT+'$'+'0'*64
+    computed=password_hash(body.password,stored.split('$')[1])
+    if not row or not hmac.compare_digest(computed,stored):
+        record_failure(db,scopes)
+        sec.fail(401,'INVALID_USERNAME_OR_PASSWORD')
+    limiter.clear_failures([pair[0]])
+    from api.app import profile
+    if profile.mfa_enabled(db,row[0]):return profile.begin_challenge(db,row[0])
+    return complete_login(db,request,response,row[0],body.remember)
+
+
+def complete_login(db,request,response,account_id,remember=False):
+    """Issue the session after every required factor has been checked."""
+    ttl=REMEMBER_TTL if remember else SESSION_TTL
+    with sec.transaction(db):
+        sec.prune_expired_sessions(db)
+        member=personal_member(db,account_id)
+        token=app_sessions.issue_client(db,request,response,member,ttl)
+        if request is not None:
+            from api.app.notifications.device import observe
+            observe(db,member,account_id,request,response)
+        code=None
+        if not db.execute('SELECT 1 FROM auth_recovery WHERE account_id=?',(account_id,)).fetchone():
+            code=secrets.token_urlsafe(24)
+            db.execute('INSERT INTO auth_recovery VALUES (?,?)',(account_id,hashlib.sha256(code.encode()).hexdigest()))
+    result=session_result(db,request,token)
+    if code:result['recovery_code']=code
+    return result
+
+
+@router.post('/auth/guest')
+def guest(request:Request):
+    browser_origin(request)
+    sec.fail(410,'EXAMPLE_ACCESS_RETIRED')
+
+
+@router.post('/auth/logout')
+def logout(request:Request,response:Response,body: app_sessions.Logout | None = None,db=Depends(db_connection)):
+    browser_origin(request)
+    if app_sessions.native(request):
+        app_sessions.logout(db,request,body)
+        return {'simulation_only':True}
+    token=request.cookies.get(COOKIE)
+    if token:
+        with db:db.execute('DELETE FROM security_sessions WHERE token_hash=?',(hashlib.sha256(token.encode()).hexdigest(),))
+    response.delete_cookie(COOKIE,path='/');return {'simulation_only':True}
+
+
+class WorkspaceChoice(Contract):
+    business_id:str=Field(min_length=1,max_length=80)
+
+
+@router.post('/account/switch')
+def switch(body:WorkspaceChoice,request:Request,response:Response,actor=Depends(principal),db=Depends(db_connection)):
+    member=db.execute('SELECT account_id FROM account_members WHERE user_id=?',(actor.user_id,)).fetchone()
+    if not member:sec.fail(403,'ACCOUNT_REQUIRED')
+    ttl=current_ttl(db,request)
+    with sec.transaction(db):
+        sec.recheck(db,actor)
+        user=db.execute('SELECT m.user_id FROM account_members m JOIN security_users u ON u.user_id=m.user_id WHERE m.account_id=? AND m.business_id=? AND u.active=1 AND EXISTS (SELECT 1 FROM workspace_meta w WHERE w.business_id=m.business_id AND w.kind="personal" AND w.archived_at IS NULL)',(member[0],body.business_id)).fetchone()
+        if not user:sec.fail(403,'WORKSPACE_ACCESS_DENIED')
+        token=app_sessions.issue_client(db,request,response,user[0],ttl,switch_device=True)
+    return session_result(db,request,token)
+
+
+class AcceptRequest(Contract):
+    code:str=Field(min_length=20,max_length=100)
+
+
+@router.post('/account/join')
+def join(body:AcceptRequest,request:Request,response:Response,actor=Depends(principal),db=Depends(db_connection)):
+    member=db.execute('SELECT account_id FROM account_members WHERE user_id=?',(actor.user_id,)).fetchone()
+    if not member:sec.fail(403,'ACCOUNT_REQUIRED')
+    sec.budget(db,'join:'+actor.user_id,10)
+    ttl=current_ttl(db,request)
+    with sec.transaction(db):
+        sec.recheck(db, actor)
+        invitation=db.execute('SELECT business_id,role,created_by FROM effective_workspace_invites WHERE code_hash=? AND expires_at>? AND used_by IS NULL',(hashlib.sha256(body.code.encode()).hexdigest(),sec.now())).fetchone()
+        if not invitation or not db.execute("SELECT 1 FROM workspace_meta WHERE business_id=? AND kind='personal' AND archived_at IS NULL",(invitation[0],)).fetchone():sec.fail(409,'INVITATION_INVALID_OR_EXPIRED')
+        past=db.execute('SELECT m.user_id,u.role,u.active FROM account_members m JOIN security_users u ON u.user_id=m.user_id WHERE m.account_id=? AND m.business_id=?',(member[0],invitation[0])).fetchone()
+        if past and (past[2] or past[1]=='owner'):sec.fail(409,'ALREADY_A_WORKSPACE_MEMBER')
+        creator=db.execute('SELECT role,active FROM security_users WHERE user_id=?',(invitation[2],)).fetchone()
+        if not creator or tuple(creator)!=('owner',1):sec.fail(409,'INVITATION_INVALID_OR_EXPIRED')
+        if past:
+            # Someone the owner removed (or who left) and who was invited again: switch their old seat back on with the new role.
+            user=past[0]
+            db.execute('UPDATE security_users SET active=1,role=? WHERE user_id=?',(sec.stored_role(invitation[1]),user))
+        else:
+            user='user-'+uuid.uuid4().hex
+            db.execute('INSERT INTO security_users VALUES (?,?,?,1)',(user,invitation[0],sec.stored_role(invitation[1])))
+            db.execute('INSERT INTO account_members VALUES (?,?,?)',(member[0],invitation[0],user))
+        sec.grant_bookkeeper(db, user, invitation[1])
+        db.execute('UPDATE workspace_invites SET used_by=? WHERE code_hash=?',(member[0],hashlib.sha256(body.code.encode()).hexdigest()))
+        token=app_sessions.issue_client(db,request,response,user,ttl,switch_device=True)
+        sec.audit(db,sec.authenticate(db,token),'join-'+uuid.uuid4().hex,'WORKSPACE_JOINED',{'role':invitation[1],'invited_by':invitation[2]})
+    return session_result(db,request,token)
+
+
+def today_bd():
+    return datetime.now(timezone(timedelta(hours=6))).date()
+
+
+def create_workspace_data(db,business,kind,name,currency="BDT"):
+    from api.app.services.finance import Dataset
+    if kind!='personal':sec.fail(422,'PERSONAL_WORKSPACE_REQUIRED')
+    ds=Dataset(opening_source_id='opening-zero',opening_on=date(1970,1,1),as_of=today_bd(),opening_balance_minor=0,currency=currency,invoices=[],events=[])
+    db.execute('INSERT INTO financial_datasets VALUES (?,?,?)',(business,fingerprint(ds),ds.model_dump_json()))
+    db.execute('INSERT INTO security_policies VALUES (?,?,?)',(business,0,100000 * scale(currency)))
+    db.execute('INSERT INTO workspace_meta(business_id,name,kind) VALUES (?,?,?)',(business,name,'personal'))
+
+
+def personal_member(db,account):
+    row=db.execute("SELECT m.user_id FROM account_members m JOIN security_users u ON u.user_id=m.user_id JOIN workspace_meta w ON w.business_id=m.business_id WHERE m.account_id=? AND u.active=1 AND w.kind='personal' AND w.archived_at IS NULL ORDER BY CASE u.role WHEN 'owner' THEN 0 ELSE 1 END,m.rowid LIMIT 1",(account,)).fetchone()
+    if row:return row[0]
+    business='workspace-'+uuid.uuid4().hex;user='user-'+uuid.uuid4().hex
+    db.execute("INSERT INTO security_users VALUES (?,?,'owner',1)",(user,business))
+    db.execute('INSERT INTO account_members VALUES (?,?,?)',(account,business,user))
+    create_workspace_data(db,business,'personal','My workspace')
+    token=issue(db,user)
+    sec.audit(db,sec.authenticate(db,token),'workspace-'+business,'WORKSPACE_CREATED',{'sample_data':False,'reason':'personal_records'})
+    return user
+
+
+class NewWorkspace(Contract):
+    currency: Currency = 'BDT'
+    kind: str = Field(pattern='^personal$',default='personal')
+    name: str = Field(min_length=1,max_length=60)
+
+
+@router.post('/account/workspaces',status_code=201)
+def new_workspace(body:NewWorkspace,request:Request,response:Response,actor=Depends(principal),db=Depends(db_connection)):
+    member=db.execute('SELECT account_id FROM account_members WHERE user_id=?',(actor.user_id,)).fetchone()
+    if not member:sec.fail(403,'ACCOUNT_REQUIRED')
+    sec.budget(db,'new-workspace:'+member[0],3)
+    ttl=current_ttl(db,request)
+    with sec.transaction(db):
+        if db.execute('SELECT count(*) FROM account_members WHERE account_id=?',(member[0],)).fetchone()[0]>=20:sec.fail(409,'WORKSPACE_LIMIT_REACHED')
+        business='workspace-'+uuid.uuid4().hex;user='user-'+uuid.uuid4().hex
+        db.execute("INSERT INTO security_users VALUES (?,?,'owner',1)",(user,business))
+        db.execute('INSERT INTO account_members VALUES (?,?,?)',(member[0],business,user))
+        create_workspace_data(db,business,body.kind,body.name,body.currency)
+        token=app_sessions.issue_client(db,request,response,user,ttl,switch_device=True)
+        sec.audit(db,sec.authenticate(db,token),'workspace-'+business,'WORKSPACE_CREATED',{'sample_data':False})
+    return session_result(db,request,token)
+
+
+class RecoveryRequest(Credentials):
+    recovery_code: str = Field(min_length=20,max_length=100)
+    second_factor: str | None = Field(default=None,max_length=12)
+
+    @model_validator(mode='after')
+    def not_weak(self):
+        reject_weak_password(self.password,self.username)
+        return self
+
+
+@router.post('/auth/recover')
+def recover(body:RecoveryRequest,request:Request,response:Response,db=Depends(db_connection)):
+    browser_origin(request);edge=rate(request,db,'recover',4,20,40)
+    scopes=failure_scopes('recover',body.username,edge,5,20,30)
+    locked_out(db,scopes)
+    row=db.execute('SELECT a.account_id,r.code_hash FROM auth_accounts a JOIN auth_recovery r ON r.account_id=a.account_id WHERE a.username=? COLLATE NOCASE',(body.username,)).fetchone()
+    supplied=hashlib.sha256(body.recovery_code.encode()).hexdigest()
+    if row is None or not hmac.compare_digest(supplied,row[1]):
+        record_failure(db,scopes)
+        sec.fail(401,'INVALID_RECOVERY_DETAILS')
+    # The recovery key is one static secret: with two-step sign-in on it must not be a way around the second step
+    # (same rule as the email reset path). Checked before the key is spent, so a missing code costs nothing.
+    from api.app import profile
+    if profile.mfa_enabled(db,row[0]):
+        if not body.second_factor:sec.fail(401,'SECOND_FACTOR_REQUIRED')
+        if not profile.check_second_factor(db,row[0],body.second_factor):
+            record_failure(db,scopes)
+            sec.fail(401,'INVALID_CODE')
+    hashed=password_hash(body.password);code=secrets.token_urlsafe(24)
+    with sec.transaction(db):
+        current=db.execute('SELECT code_hash FROM auth_recovery WHERE account_id=?',(row[0],)).fetchone()
+        if not current or not hmac.compare_digest(supplied,current[0]):sec.fail(401,'INVALID_RECOVERY_DETAILS')
+        db.execute('UPDATE auth_accounts SET password_hash=? WHERE account_id=?',(hashed,row[0]))
+        db.execute('UPDATE auth_recovery SET code_hash=? WHERE account_id=?',(hashlib.sha256(code.encode()).hexdigest(),row[0]))
+        db.execute('DELETE FROM security_sessions WHERE user_id IN (SELECT user_id FROM account_members WHERE account_id=?)',(row[0],))
+        app_sessions.revoke_account(db,row[0])
+        user=personal_member(db,row[0]);token=app_sessions.issue_client(db,request,response,user,SESSION_TTL)
+        actor=sec.authenticate(db,token);sec.verify_audit_head(db,actor.business_id)
+        sec.audit(db,actor,'recovery-'+uuid.uuid4().hex,'ACCOUNT_RECOVERED',{'sessions_revoked':True})
+    return dict(session_result(db,request,token),recovery_code=code)

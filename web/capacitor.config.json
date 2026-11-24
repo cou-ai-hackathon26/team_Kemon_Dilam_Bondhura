@@ -1,0 +1,7 @@
+{
+  "appId": "com.capzoryx.copilot",
+  "appName": "Capzoryx Copilot",
+  "webDir": "dist-native",
+  "server": {"hostname": "app.capzoryx.local", "androidScheme": "https", "cleartext": false},
+  "android": {"allowMixedContent": false, "loggingBehavior": "none"}
+}

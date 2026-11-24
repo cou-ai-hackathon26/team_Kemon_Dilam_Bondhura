@@ -1,0 +1,25 @@
+name: Notification scheduler backup
+# In this submission repository the half-hourly schedule is off (it needs the production deployment's secrets);
+# the production repository runs it every 30 minutes. It can still be started by hand.
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tick:
+    if: github.ref == 'refs/heads/main' && vars.CAPZORYX_ENABLE_NOTIFICATION_BACKUP == '1'
+    environment: production
+    concurrency:
+      group: notification-tick-production
+      cancel-in-progress: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+      - name: Deliver in-app reminders
+        env:
+          API_ORIGIN: ${{ vars.CAPZORYX_TICK_ORIGIN }}
+          CAPZORYX_TICK_SECRET: ${{ secrets.CAPZORYX_TICK_SECRET }}
+        run: |
+          if [ -z "$API_ORIGIN" ]; then exit 0; fi
+          node --input-type=module -e "import {runTick} from './infra/notification-tick/worker.mjs'; await runTick(process.env.API_ORIGIN,process.env.CAPZORYX_TICK_SECRET)"
