@@ -839,3 +839,14 @@ main.welcome > .welcome-story > .competition-cta { order: 5; justify-self: start
 .chat-panel-with-voice { overflow-y: auto; }
 .chat-panel-with-voice .chat-log { flex: 0 0 min(32dvh, 280px); }
 .chat-panel-with-voice .voice-note { flex: 0 0 auto; margin: 0; min-width: 0; }
+/* App shell at any width: a phone in desktop mode, a tablet or a wide window keeps one row of tabs and a centred,
+   phone-like column (the website's own nav rules turn nav into a column above 760px). */
+.app-shell nav.app-tabs{flex-direction:row!important;flex-wrap:nowrap;justify-content:center;gap:0}
+.app-shell nav.app-tabs button{flex:1 1 0;max-width:150px;width:auto}
+.app-shell .app-bar{max-width:none}
+@media(min-width:761px){
+  .app-shell .app-content{max-width:820px}
+  .app-shell nav.app-tabs{padding-left:max(4px,calc(50vw - 380px));padding-right:max(4px,calc(50vw - 380px))}
+}
+.app-shell #workspace.app-content{padding:14px 14px calc(92px + env(safe-area-inset-bottom));margin:0 auto}
+.app-shell header.app-bar{margin:0}
