@@ -17,7 +17,20 @@ createRoot(document.getElementById('root')!).render(<StrictMode><ThemeProvider><
 
 if (!nativeBuild && import.meta.env.PROD && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {});
+    navigator.serviceWorker.register('/sw.js').then(reg => {
+      // Look for a new version whenever the owner comes back to the page or the installed app.
+      document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void reg.update().catch(() => {}); });
+      if (!installedApp) return;
+      // The installed app has no footer with an update button: switch to the new version by itself, once.
+      const apply = (worker: ServiceWorker | null) => { if (worker && navigator.serviceWorker.controller) worker.postMessage('ACTIVATE_UPDATE'); };
+      apply(reg.waiting);
+      reg.addEventListener('updatefound', () => {
+        const worker = reg.installing;
+        worker?.addEventListener('statechange', () => { if (worker.state === 'installed') apply(worker); });
+      });
+      let reloaded = false;
+      navigator.serviceWorker.addEventListener('controllerchange', () => { if (!reloaded) { reloaded = true; location.reload(); } });
+    }).catch(() => {});
   });
 }
 
