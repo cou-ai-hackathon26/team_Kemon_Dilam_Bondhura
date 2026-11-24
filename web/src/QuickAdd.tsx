@@ -22,6 +22,7 @@ export function QuickAdd({request,revision,onSaved,profile,owner,cloudAvailable,
   const [text,setText]=useState('');const [busy,setBusy]=useState<''|'photo'|'text'>('');const [error,setError]=useState('');
   const [onlineRead,setOnlineRead]=useState<OnlineRead|null>(null);
   const [draft,setDraft]=useState<Draft|null>(null);const [preview,setPreview]=useState('');
+  const [photoOnline,setPhotoOnline]=useState(false);  // offer to read this photo with a free online vision model
   const file=useRef<HTMLInputElement>(null);const gallery=useRef<HTMLInputElement>(null);
   const smart=owner&&!!profile?.smart_assist&&cloudAvailable;
   const allowHisabBackup=smart&&!!profile?.record_api_fallback;
@@ -32,7 +33,7 @@ export function QuickAdd({request,revision,onSaved,profile,owner,cloudAvailable,
     (onlineRead.source==='hisab'?canUseHisab:canUseRecordApi)?onlineRead.source:null;
   function updateText(value:string){setText(value);setOnlineRead(null);}
   async function scan(f:File|undefined){
-    if(!f)return;setOnlineRead(null);setHisabDraft(null);setError('');setDraft(null);setPhotoText('');setPreview('');setBusy('photo');
+    if(!f)return;setPhotoOnline(false);setOnlineRead(null);setHisabDraft(null);setError('');setDraft(null);setPhotoText('');setPreview('');setBusy('photo');
     try{
       const image=await prepareDocumentPhoto(f);setPreview(image);
       const {readPhotoText,draftFromBill}=await import('./billPhoto');
@@ -40,9 +41,19 @@ export function QuickAdd({request,revision,onSaved,profile,owner,cloudAvailable,
       setPhotoText(recognized.trim().slice(0,3000));
       const result=draftFromBill(recognized,currency);
       if(result)setDraft(result);
+      else if(owner&&profile?.smart_assist)setPhotoOnline(true);
       else setError(t('No unambiguous total in the workspace currency was found. Check the photo and enter the record manually.'));
     }catch(e){setError(e instanceof Error?e.message:t('The photo could not be read.'));}
     finally{setBusy('');if(file.current)file.current.value='';if(gallery.current)gallery.current.value='';}
+  }
+  async function readOnline(){
+    if(!preview)return;setBusy('photo');setError('');
+    try{
+      const r=await request<{draft:Draft}>('/assist/scan',{image:preview,free_vision_consent:true});
+      if(!r.draft.ok)throw new Error(t('The photo could not be read. A sharper, well-lit photo of the whole bill works best.'));
+      setDraft(r.draft);setPhotoOnline(false);
+    }catch(e){setError(e instanceof Error?e.message:t('The photo could not be read.'));}
+    finally{setBusy('');}
   }
   async function read(){
     if(!sentence||busy)return;setHisabDraft(null);setError('');setDraft(null);setPhotoText('');setPreview('');setBusy('text');
@@ -78,6 +89,8 @@ export function QuickAdd({request,revision,onSaved,profile,owner,cloudAvailable,
         <div className="actions"><button id="capture-photo" disabled={busy!==''} onClick={()=>file.current?.click()}>{busy==='photo'?t('Reading your photo…'):t('Take a photo')}</button><button className="secondary" disabled={busy!==''} onClick={()=>gallery.current?.click()}>{t('Choose from gallery')}</button></div>
         {photoText&&<details><summary>{t('Text read from the photo')}</summary><p>{photoText}</p></details>}
         {preview&&busy==='photo'&&<img className="scan-preview" src={preview} alt={t('Your photo being read')}/>}
+        {photoOnline&&!draft&&busy===''&&<div className="notice small" role="status"><p>{t('This phone could not find the total. Read the photo with a free online AI instead? The photo is sent to Groq or Google, which may keep it; nothing is saved until you check it.')}</p>
+          <div className="actions"><button onClick={()=>void readOnline()}>{t('Read online')}</button><button className="secondary" onClick={()=>{setPhotoOnline(false);setError(t('Enter the record by typing it below.'));}}>{t('No, I will type it')}</button></div></div>}
       </div>
       <div className="quick-box">
         <h3><Icon name="pen"/> {t('Type it like a message')}</h3>

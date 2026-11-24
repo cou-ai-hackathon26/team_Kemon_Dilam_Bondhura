@@ -92,6 +92,36 @@ For a voice conversation, open **Assistant → Talk to Capzoryx**, record a turn
 
 <p align="center"><img src="docs/screenshots/mobile.png" width="260" alt="Overview on a phone in dark mode"></p>
 
+## From the idea document to the code
+
+Each promise in the submitted idea document, and where it is implemented.
+
+| Promise | Implementation |
+|---|---|
+| Capture by photo, text or voice, in the owner's language; nothing is saved until the owner confirms | Photo: on-device reading in `web/src/billPhoto.ts` (`readPhotoText`, `draftFromBill`), then the two-pass server reader `api/app/assist.py` (`scan`, `_read_photo`, `_scan_issues`). Text: `web/src/recordParser.ts`, `api/app/assist.py` (`normalize_draft`). Voice: `api/app/voice_batch.py` (`transcribe`, `split_note`, `checked_drafts`), `web/src/VoiceNote.tsx`. Saving: `api/app/inputs.py` (`add_record`, `add_records`, atomic and idempotent) |
+| Cash radar: a 30-day outlook naming the day cash falls below the reserve | `api/app/services/finance.py` (`project_cashflow`), `api/app/services/radar.py` (`expectations`, `outlook`), `web/src/CashRadar.tsx`, alerts in `api/app/notifications/scheduler.py` |
+| Gap-fixer agent with typed tools that proposes and never pays | `api/app/agents/runner.py` (`run_task`, `parse_calls`), `api/app/agents/schema.py`, `api/app/copilot/gapfix.py` (`best_plan`), `api/app/copilot/plans.py` |
+| True loan cost: a "9% flat" offer is about 17.7% a year | `api/app/services/financing.py` (`repayment_schedule`, `effective_annual_rate_bps`); checked by `api/tests/test_idea_claims.py` |
+| Cash-flow passport with a signed hash chain that a lender can verify | `api/app/passport.py`, `api/app/security.py` (audit chain, `signed`, `valid_signature`), `web/src/Passport.tsx` |
+| 37 languages, right-to-left for Arabic and Urdu, Bangla reviewed by a person | `web/src/i18n.tsx` (`LANGUAGES`), `api/app/i18n.py`, `web/public/locales/bn.json` |
+| Typed capture works offline | `web/src/Pwa.tsx` (`OfflineCapture`, `CaptureSync`), `web/public/sw.js` |
+| Guardrails: the AI has no tool to pay; injected instructions and off-topic requests are refused; amounts are checked | `api/app/security.py` (`propose`, `decide`, `execute_approved`), `api/app/provider_policy.py`, `api/app/chat/llm.py` (`grounded`), tests in `api/tests/test_security_execution.py` |
+
+**Where the build differs from the idea document, and why**
+- **Photos.**
+  - The idea named Gemini Flash-Lite for photos. Free Gemini may keep what it is sent, so business records go only to
+    the configured private provider.
+  - The phone reads a photo first (Tesseract, offline).
+  - A free vision model (Groq Llama 4, then Gemini) is used only when the owner agrees for that photo.
+  - The second checking pass and the arithmetic check are in `assist._scan_issues`.
+- **Voice.**
+  - Voice uses Whisper large-v3, a dedicated multilingual speech model that supports Bangla (Groq, then Gemini, then
+    Hugging Face).
+  - One spoken note becomes many drafts.
+  - Every amount and day is checked against the words actually said.
+- **Own model.** We added our own fine-tuned chat model, Hisab-Chat (`ml/hisab_chat/`, served from a Hugging Face
+  ZeroGPU Space). Chat tries it first; free APIs answer if it is slow (`api/app/chat/llm.py`).
+
 ## How the AI works
 
 ```mermaid

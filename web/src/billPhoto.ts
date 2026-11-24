@@ -18,7 +18,7 @@ export function draftFromBill(text:string, currency:string):Draft|null {
   const lines = normalized.split(/\r?\n/).map(line=>line.trim()).filter(Boolean);
   const amounts = new Set<number>();
   for (const line of lines) {
-    const total = line.match(/^(?:grand\s+total|amount\s+due|total(?:\s+(?:amount|due))?|সর্বমোট|মোট(?: টাকা)?)\s*[:=-]?\s*(?:(?:BDT|Tk\.?|৳|USD|EUR|GBP|[$€£])\s*)?([\d,]+(?:\.\d+)?)\s*(?:টাকা|BDT|USD|EUR|GBP)?\s*$/i);
+    const total = line.match(/^(?:grand\s+total|net\s+total|net\s+payable|total\s+payable|payable(?:\s+amount)?|amount\s+due|amount\s+payable|total(?:\s+(?:amount|due|bill|tk\.?))?|সর্বমোট|মোট(?: টাকা| বিল| প্রদেয়)?|প্রদেয়(?: টাকা)?)\s*[:=-]?\s*(?:(?:BDT|Tk\.?|৳|USD|EUR|GBP|[$€£])\s*)?([\d,]+(?:\.\d+)?)\s*(?:\/-|=\/?|টাকা|BDT|Tk\.?|USD|EUR|GBP)?\s*(?:only)?\s*$/i);
     if (!total) continue;
     try {amounts.add(parseMinor(total[1].replaceAll(',',''), currency));} catch {return null;}
   }

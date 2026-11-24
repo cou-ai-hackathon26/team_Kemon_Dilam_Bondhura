@@ -228,6 +228,8 @@ VERIFY_SYSTEM = (
 
 class ScanBody(Exact):
     image: str = Field(min_length=100, max_length=1_800_000)
+    # The owner agreed, for this photo, that a free online vision model (Groq or Google, which may keep it) reads it.
+    free_vision_consent: bool = Field(default=False, strict=True)
 
 
 def _money(value):
@@ -256,21 +258,75 @@ def _scan_issues(raw):
     return issues
 
 
-def _read_photo(db, business, image, today, previous=None, issues=None):
+def _read_photo(db, business, image, today, previous=None, issues=None, free_ok=False):
     system = (VERIFY_SYSTEM if previous else SCAN_SYSTEM).replace('{today}', today.isoformat())
     if previous:
         text = 'First reading (may contain mistakes): ' + json.dumps(previous, ensure_ascii=False)[:1800] + '\nThings to check: ' + ', '.join(issues or ['everything']) + '.'
     else:
         text = 'Read this bill, invoice or receipt photo.'
     content = [{'type': 'text', 'text': text}, {'type': 'image_url', 'image_url': {'url': image}}]
-    reply = gateway.complete('scan_image', [{'role': 'system', 'content': system}, {'role': 'user', 'content': content}], db=db, business_id=business, data_class='record_data', consent=True, max_tokens=900, schema={'type':'object'}, vision=True)
+    messages = [{'role': 'system', 'content': system}, {'role': 'user', 'content': content}]
+    try:
+        reply = gateway.complete('scan_image', messages, db=db, business_id=business, data_class='record_data', consent=True, max_tokens=900, schema={'type':'object'}, vision=True)
+    except ProviderError:
+        # Business records never go to a provider that may keep them, unless the owner agreed to it for this photo.
+        if not free_ok:
+            raise
+        reply = free_vision(messages)
     return cloud.parse_json_object(reply)
+
+
+VISION_MODELS = (('groq', ('meta-llama/llama-4-scout-17b-16e-instruct', 'meta-llama/llama-4-maverick-17b-128e-instruct')),
+                 ('gemini', ('gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-flash-latest')))
+
+
+def free_vision(messages, max_tokens=900, timeout=30):
+    """The first free vision model that answers with text: Groq Llama 4 (Scout, then Maverick), then Gemini."""
+    import httpx
+    from api.app.chat import llm
+    for name, models in VISION_MODELS:
+        provider = next((p for p in llm.PROVIDERS if p.name == name), None)
+        if provider is None or not provider.key:
+            continue
+        for model in models:
+            payload = {'model': model, 'messages': messages, 'temperature': 0, 'max_tokens': max_tokens,
+                       'response_format': {'type': 'json_object'}}
+            try:
+                with httpx.Client(transport=VISION_TRANSPORT, trust_env=False, follow_redirects=False, timeout=timeout) as client:
+                    response = client.post(provider.url + '/chat/completions', json=payload, headers={'Authorization': 'Bearer ' + provider.key})
+                    if response.status_code == 400:  # a model without JSON mode
+                        payload.pop('response_format')
+                        response = client.post(provider.url + '/chat/completions', json=payload, headers={'Authorization': 'Bearer ' + provider.key})
+            except httpx.HTTPError:
+                continue
+            if response.status_code == 429:
+                break  # this provider's free quota is used up: try the next provider
+            if response.status_code != 200:
+                continue
+            try:
+                content = response.json()['choices'][0]['message']['content']
+            except (ValueError, KeyError, IndexError, TypeError):
+                continue
+            if isinstance(content, list):
+                content = ''.join(part.get('text', '') for part in content if isinstance(part, dict))
+            if content:
+                return content
+    raise ProviderError('AI_PROVIDER_UNAVAILABLE')
+
+
+VISION_TRANSPORT = None  # tests inject an httpx.MockTransport
+
+
+def vision_configured():
+    from api.app.chat import llm
+    return any(p.name in ('groq', 'gemini') and p.key for p in llm.PROVIDERS)
 
 
 @router.post('/assist/scan')
 def scan(body: ScanBody, actor=Depends(principal), db=Depends(db_connection)):
     if actor.role != 'owner':sec.fail(403, 'OWNER_REQUIRED')
-    require_smart(db, actor)
+    if not smart_enabled(db, actor):sec.fail(403, 'SMART_ASSIST_OFF')
+    if not cloud.configured() and not vision_configured():sec.fail(503, 'AI_NOT_CONFIGURED')
     match = IMAGE.fullmatch(body.image)
     if not match:sec.fail(422, 'IMAGE_FORMAT_UNSUPPORTED')
     try:raw = base64.b64decode(match.group(2), validate=True)
@@ -282,13 +338,13 @@ def scan(body: ScanBody, actor=Depends(principal), db=Depends(db_connection)):
     ws_currency = sec.runtime_dataset(db, actor.business_id).currency
     today = today_bd()
     started = time.monotonic()
-    first = _read_photo(db, actor.business_id, body.image, today)
+    first = _read_photo(db, actor.business_id, body.image, today, free_ok=body.free_vision_consent)
     issues = _scan_issues(first)
     final, checked = first, False
     # A second, checking pass fixes most misreads. It is skipped when the first answer looks solid or time is short.
     if issues and time.monotonic() - started < 14:
         try:
-            second = _read_photo(db, actor.business_id, body.image, today, previous=first, issues=issues)
+            second = _read_photo(db, actor.business_id, body.image, today, previous=first, issues=issues, free_ok=body.free_vision_consent)
             if _scan_issues(second) != issues or _money(second.get('total')) is not None:final, checked = second, True
         except ProviderError:
             pass
